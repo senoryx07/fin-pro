@@ -1,0 +1,9 @@
+fastapi
+uvicorn[standard]
+sqlmodel
+pandas
+requests
+
+# Development
+pytest
+httpx
