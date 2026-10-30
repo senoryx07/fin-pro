@@ -16,6 +16,7 @@ from backend.app.export.static_site import DEFAULT_OUTPUT, export_site
 from backend.app.ingestion.classification_loader import (
     load_classification,
 )
+from backend.app.ingestion.corporate_loader import refresh_corporate_info
 from backend.app.ingestion.financial_loader import (
     load_company_financials,
     top_tickers_by_traded_value,
@@ -52,6 +53,13 @@ def main() -> None:
     )
     parser.add_argument("--skip-prices", action="store_true")
     parser.add_argument("--skip-financials", action="store_true")
+    parser.add_argument("--skip-corporate", action="store_true")
+    parser.add_argument(
+        "--corporate-top",
+        type=int,
+        default=800,
+        help="Refresh announcements/shareholding for the N most-traded",
+    )
     args = parser.parse_args()
 
     create_db_and_tables()
@@ -84,6 +92,14 @@ def main() -> None:
                 summary = f"ERROR {exc}"
 
             print(f"[{index}/{len(tickers)}] {ticker}: {summary}", flush=True)
+
+    if not args.skip_corporate:
+        with Session(engine) as session:
+            corporate_tickers = top_tickers_by_traded_value(
+                session, args.corporate_top
+            )
+
+        refresh_corporate_info(corporate_tickers)
 
     try:
         load_classification()

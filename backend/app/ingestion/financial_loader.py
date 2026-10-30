@@ -110,11 +110,24 @@ def load_company_financials(
                 failed += 1
                 continue
 
+            # NSE's listing date can disagree with the period inside the
+            # XBRL, so match on the parsed period.
+            parsed_key = (result["period_end"], result["consolidated"])
+
+            if parsed_key != key:
+                if parsed_key in seen:
+                    skipped += 1
+                    continue
+
+                seen.add(parsed_key)
+                current = existing.get(parsed_key)
+
             if current is None:
                 current = FinancialResult(
                     security_id=security.id,
                     **result,
                 )
+                existing[parsed_key] = current
                 inserted += 1
             else:
                 for field, value in result.items():

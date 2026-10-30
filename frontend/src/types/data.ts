@@ -105,6 +105,26 @@ export interface CompanyData {
   fundamentals: Fundamentals | null;
   valuation: Valuation | null;
   peers: PeerGroup | null;
+  corporate: CorporateInfo | null;
+}
+
+export interface ShareholdingPeriod {
+  date: string;
+  promoter: number | null;
+  public: number | null;
+  employee_trusts: number | null;
+}
+
+export interface CorporateInfo {
+  announcements: {
+    date: string | null;
+    subject: string;
+    text: string;
+    url: string | null;
+  }[];
+  actions: { ex_date: string; purpose: string }[];
+  meetings: { date: string; purpose: string }[];
+  shareholding: ShareholdingPeriod[];
 }
 
 export interface PeerGroup {

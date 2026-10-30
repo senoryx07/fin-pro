@@ -12,7 +12,7 @@ export interface Company {
   name: string;
   sector: string;
   industry: string;
-  description: string;
+  description: string | null;
   security: Security;
 }
 

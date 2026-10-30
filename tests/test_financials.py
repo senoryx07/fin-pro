@@ -282,3 +282,48 @@ def test_adjust_prices_ignores_gap_with_no_standard_ratio():
     ]
 
     assert adjust_prices(prices)[1] == []
+
+
+def test_corporate_normalize():
+    from backend.app.ingestion.corporate_loader import normalize
+
+    summary = {
+        "shareholdings_patterns": {
+            "data": {
+                "30-Jun-2026": [
+                    {"Promoter & Promoter Group": " 50.48"},
+                    {"Public": " 49.52"},
+                ],
+                "31-Mar-2026": [
+                    {"Promoter & Promoter Group": " 50.00"},
+                    {"Public": " 50.00"},
+                ],
+            }
+        },
+        "corporate_actions": {
+            "data": [{"exdate": "28-Oct-2024", "purpose": "Bonus 1:1"}]
+        },
+        "borad_meeting": {
+            "data": [
+                {"meetingdate": "30-Oct-2026", "purpose": "A much longer intimation text"},
+                {"meetingdate": "30-Oct-2026", "purpose": "Results"},
+            ]
+        },
+    }
+    announcements = [
+        {
+            "an_dt": "29-Oct-2026 08:55:40",
+            "desc": "Updates",
+            "attchmntText": "word " * 200,
+            "attchmntFile": "-",
+        }
+    ]
+
+    data = normalize(summary, announcements)
+
+    assert [s["date"] for s in data["shareholding"]] == ["2026-03-31", "2026-06-30"]
+    assert data["shareholding"][-1]["promoter"] == 50.48
+    assert data["actions"] == [{"ex_date": "2024-10-28", "purpose": "Bonus 1:1"}]
+    assert data["meetings"] == [{"date": "2026-10-30", "purpose": "Results"}]
+    assert len(data["announcements"][0]["text"]) <= 400
+    assert data["announcements"][0]["url"] is None

@@ -20,6 +20,7 @@ from sqlmodel import Session, select
 from backend.app.database.database import engine
 from backend.app.financials.service import build_fundamentals
 from backend.app.models.company import Company
+from backend.app.models.corporate import CorporateInfo
 from backend.app.models.financials import FinancialResult
 from backend.app.models.market_data import DailyPrice
 from backend.app.models.security import Security
@@ -93,6 +94,7 @@ def export_company(
     technicals = build_technical_snapshot(session, security.ticker)
     fundamentals = build_fundamentals(session, security)
     valuation = build_valuation(session, security)
+    corporate = session.get(CorporateInfo, security.id)
 
     valuation_data = valuation.model_dump(mode="json", exclude={"pe_history"})
     valuation_data["pe_history"] = {
@@ -100,10 +102,17 @@ def export_company(
         "pe": [_round(p.pe_ratio) for p in valuation.pe_history],
     }
 
+    profile = build_company_response(company, security).model_dump(
+        mode="json"
+    )
+
+    # The seed data uses a placeholder until a real profile exists; the
+    # site writes its own summary instead.
+    if profile["description"].startswith("Company profile pending"):
+        profile["description"] = None
+
     return {
-        "company": build_company_response(company, security).model_dump(
-            mode="json"
-        ),
+        "company": profile,
         "prices": columnar_prices(series),
         "adjustments": [
             a.model_dump(mode="json") for a in series.adjustments
@@ -115,6 +124,7 @@ def export_company(
             else None
         ),
         "valuation": valuation_data if fundamentals.basis else None,
+        "corporate": corporate.data if corporate else None,
     }
 
 

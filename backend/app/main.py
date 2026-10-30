@@ -11,6 +11,7 @@ from backend.app.database.database import create_db_and_tables
 from backend.app.database.seed import seed_companies
 from backend.app.models.market_data import DailyPrice
 from backend.app.models.financials import FinancialResult
+from backend.app.models.corporate import CorporateInfo
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):

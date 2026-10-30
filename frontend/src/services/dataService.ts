@@ -109,6 +109,7 @@ interface RawCompanyData {
   fundamentals: CompanyData["fundamentals"];
   valuation: CompanyData["valuation"];
   peers: CompanyData["peers"];
+  corporate: CompanyData["corporate"];
 }
 
 

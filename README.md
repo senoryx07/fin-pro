@@ -46,13 +46,15 @@ npm install
 ```bash
 python -m backend.app.ingestion.nse_security_loader          # company list
 python -m backend.app.ingestion.market_loader --start 2025-10-01
+python -m backend.app.ingestion.classification_loader        # sectors
 python -m backend.app.ingestion.financial_loader --top 100   # results, ~1 min/company
+python -m backend.app.ingestion.corporate_loader --top 800   # shareholding, announcements
 ```
 
 ### Daily update
 
 ```bash
-python -m backend.app.update            # new prices + results, then export JSON
+python -m backend.app.update            # prices, results, announcements, export
 python -m backend.app.update --top 200  # also add results for more companies
 ```
 
@@ -100,15 +102,17 @@ http://127.0.0.1:8000/docs.
 
 ## Research Modules
 
-| Module | Status |
-| --- | --- |
-| Company Overview | ✅ Live |
-| Fundamentals (quarterly & annual results) | ✅ Live |
-| Valuation (market cap, P/E, P/S, P/E history) | ✅ Live |
-| Technical Analysis | ✅ Live |
-| Markets (all companies, sortable) | ✅ Live |
-| Peer Comparison | Planned |
-| News & Filings | Planned |
-| Business, Management, Industry | Planned |
+| Tab | What it shows | Source |
+| --- | --- | --- |
+| Overview | Quote, price chart, company snapshot, key metrics | NSE bhavcopy |
+| Fundamentals | Quarterly & annual results, margins, growth | NSE results XBRL |
+| Valuation | Market cap, P/E, P/S, P/E history | Prices + results |
+| Technicals | RSI, MACD, Bollinger, moving averages, returns | NSE bhavcopy |
+| Peers | Largest companies in the same industry | NSE index lists |
+| Shareholding | Promoter vs public holding by quarter | NSE |
+| Announcements | Filings, corporate actions, board meetings | NSE |
+
+Results, shareholding and announcements cover the most-traded companies;
+prices and technicals cover every NSE equity.
 
 Not investment advice.
