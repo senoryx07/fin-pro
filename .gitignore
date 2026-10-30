@@ -32,3 +32,6 @@ Thumbs.db
 
 # Generated site data (published by scripts/deploy.py, not committed)
 frontend/public/data/
+
+# Daily update logs
+logs/

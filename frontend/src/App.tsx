@@ -1,3 +1,4 @@
+import DataNotice from "./components/DataNotice";
 import Sidebar from "./components/Sidebar";
 import TopBar from "./components/TopBar";
 import Home from "./pages/Home";
@@ -28,6 +29,7 @@ function App() {
 
       <div className="main-area">
         <TopBar />
+        <DataNotice />
         <main className="page-content">{renderPage()}</main>
       </div>
     </div>
