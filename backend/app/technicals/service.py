@@ -1,9 +1,13 @@
+from dataclasses import dataclass
+from datetime import date
+
 from sqlmodel import Session, select
 
 from backend.app.models.market_data import (
     DailyPrice,
     IndicatorAvailability,
     MovingAverage,
+    PriceAdjustment,
     PricePoint,
     PriceSeriesResponse,
     TechnicalSnapshot,
@@ -35,28 +39,156 @@ def find_nse_security(
     ).first()
 
 
+# Smallest bonus (1:10) and largest reverse split worth adjusting for.
+# Ratios in between are dividends or trading-series switches and are
+# left alone.
+MIN_ADJUSTMENT_RATIO = 1.09
+MAX_REVERSE_RATIO = 0.5
+
+
+@dataclass
+class PriceBar:
+    """A daily price, adjusted for splits and bonuses."""
+
+    trade_date: date
+    open: float | None
+    high: float | None
+    low: float | None
+    close: float
+    previous_close: float | None
+    volume: int | None
+
+
+# NSE caps daily moves at 20% for stocks with price bands, so an overnight
+# gap larger than this is a split or bonus rather than a real move.
+GAP_THRESHOLD = 1 / 0.75
+
+# Common split and bonus ratios (5:1 split = 5, 1:1 bonus = 2, ...).
+STANDARD_RATIOS = (1.25, 4 / 3, 1.5, 2.0, 2.5, 3.0, 4.0, 5.0, 6.0, 10.0, 20.0)
+
+RATIO_TOLERANCE = 0.10
+
+
+def _standard_ratio(gap: float) -> float | None:
+    nearest = min(STANDARD_RATIOS, key=lambda r: abs(gap / r - 1))
+
+    return nearest if abs(gap / nearest - 1) <= RATIO_TOLERANCE else None
+
+
+def find_adjustments(
+    prices: list[DailyPrice],
+) -> list[PriceAdjustment]:
+    """
+    Split and bonus adjustments, from two signals:
+
+    - NSE sometimes reports the previous close already adjusted on the
+      ex-date, so prior close / that figure is the exact factor.
+    - Otherwise the ex-date shows as an overnight gap down far beyond the
+      daily price band, which is snapped to the nearest standard ratio.
+    """
+    adjustments = []
+
+    for previous, current in zip(prices, prices[1:]):
+        ratio = None
+
+        if current.previous_close:
+            reported = previous.close / current.previous_close
+
+            if (
+                reported >= MIN_ADJUSTMENT_RATIO
+                or reported <= MAX_REVERSE_RATIO
+            ):
+                ratio = reported
+
+        reference = current.open or current.close
+
+        if ratio is None and reference:
+            gap = previous.close / reference
+
+            if gap >= GAP_THRESHOLD:
+                ratio = _standard_ratio(gap)
+
+        if ratio is not None:
+            adjustments.append(
+                PriceAdjustment(
+                    trade_date=current.trade_date,
+                    ratio=ratio,
+                )
+            )
+
+    return adjustments
+
+
+def adjust_prices(
+    prices: list[DailyPrice],
+) -> tuple[list[PriceBar], list[PriceAdjustment]]:
+    adjustments = find_adjustments(prices)
+
+    bars: list[PriceBar] = []
+    factor = 1.0
+    pending = sorted(adjustments, key=lambda a: a.trade_date)
+
+    # Walk backwards so every bar before an ex-date is divided by the
+    # product of all later adjustment ratios.
+    for price in reversed(prices):
+        bars.append(
+            PriceBar(
+                trade_date=price.trade_date,
+                open=_scale(price.open, factor),
+                high=_scale(price.high, factor),
+                low=_scale(price.low, factor),
+                close=price.close / factor,
+                previous_close=_scale(
+                    price.previous_close,
+                    factor,
+                ),
+                volume=(
+                    round(price.volume * factor)
+                    if price.volume is not None
+                    else None
+                ),
+            )
+        )
+
+        while pending and pending[-1].trade_date == price.trade_date:
+            factor *= pending.pop().ratio
+
+    bars.reverse()
+
+    return bars, adjustments
+
+
+def _scale(
+    value: float | None,
+    factor: float,
+) -> float | None:
+    return value / factor if value is not None else None
+
+
 def get_daily_prices(
     session: Session,
     security: Security,
-    limit: int | None = None,
-) -> list[DailyPrice]:
-    """Daily prices with a close, oldest first, optionally the latest `limit`."""
-    statement = (
-        select(DailyPrice)
-        .where(
-            DailyPrice.security_id == security.id,
-            DailyPrice.close.is_not(None),
-        )
-        .order_by(DailyPrice.trade_date.desc())
+) -> list[PriceBar]:
+    """Split/bonus-adjusted daily prices with a close, oldest first."""
+    return get_adjusted_prices(session, security)[0]
+
+
+def get_adjusted_prices(
+    session: Session,
+    security: Security,
+) -> tuple[list[PriceBar], list[PriceAdjustment]]:
+    prices = list(
+        session.exec(
+            select(DailyPrice)
+            .where(
+                DailyPrice.security_id == security.id,
+                DailyPrice.close.is_not(None),
+            )
+            .order_by(DailyPrice.trade_date)
+        ).all()
     )
 
-    if limit is not None:
-        statement = statement.limit(limit)
-
-    prices = list(session.exec(statement).all())
-    prices.reverse()
-
-    return prices
+    return adjust_prices(prices)
 
 
 def build_price_series(
@@ -69,7 +201,7 @@ def build_price_series(
     if security is None or security.ticker is None:
         return None
 
-    prices = get_daily_prices(session, security)
+    prices, adjustments = get_adjusted_prices(session, security)
     closes = [price.close for price in prices]
 
     sma_20 = indicators.sma(closes, 20)
@@ -97,6 +229,7 @@ def build_price_series(
         ticker=security.ticker,
         exchange=security.exchange,
         points=points,
+        adjustments=adjustments,
     )
 
 

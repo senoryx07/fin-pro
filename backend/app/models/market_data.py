@@ -67,10 +67,16 @@ class PricePoint(SQLModel):
     bollinger_lower: float | None
 
 
+class PriceAdjustment(SQLModel):
+    trade_date: date
+    ratio: float
+
+
 class PriceSeriesResponse(SQLModel):
     ticker: str
     exchange: str
     points: list[PricePoint]
+    adjustments: list[PriceAdjustment] = []
 
 
 class MovingAverage(SQLModel):

@@ -8,6 +8,7 @@ from sqlmodel import Session, SQLModel, create_engine
 from backend.app.database.database import get_session
 from backend.app.main import app
 from backend.app.models.company import Company
+from backend.app.models.financials import FinancialResult
 from backend.app.models.market_data import DailyPrice
 from backend.app.models.security import Security
 
@@ -54,6 +55,30 @@ def client():
                     close=close,
                     previous_close=close - 1,
                     volume=1000 + day,
+                )
+            )
+
+        session.commit()
+
+        quarter_ends = [
+            date(2025, 3, 31),
+            date(2025, 6, 30),
+            date(2025, 9, 30),
+            date(2025, 12, 31),
+        ]
+
+        for end in quarter_ends:
+            session.add(
+                FinancialResult(
+                    security_id=security.id,
+                    period_start=end.replace(day=1) - timedelta(days=60),
+                    period_end=end,
+                    consolidated=True,
+                    revenue=1000.0,
+                    expenses=800.0,
+                    net_profit_owners=50.0,
+                    paid_up_capital=1000.0,
+                    face_value=10.0,
                 )
             )
 
@@ -113,3 +138,26 @@ def test_technical_snapshot(client):
 def test_unknown_ticker_returns_404(client):
     assert client.get("/api/companies/NOPE/prices").status_code == 404
     assert client.get("/api/companies/NOPE/technicals").status_code == 404
+
+
+def test_fundamentals_and_valuation(client):
+    fundamentals = client.get("/api/companies/TEST/fundamentals").json()
+
+    assert fundamentals["basis"] == "consolidated"
+    assert fundamentals["shares_outstanding"] == 100
+    assert fundamentals["ttm_net_profit"] == 200
+    assert fundamentals["ttm_eps"] == 2
+    assert len(fundamentals["quarters"]) == 4
+
+    valuation = client.get("/api/companies/TEST/valuation").json()
+
+    assert valuation["price"] == 129.0
+    assert valuation["market_cap"] == 12900
+    assert valuation["pe_ratio"] == 64.5
+    assert valuation["price_to_sales"] == pytest.approx(12900 / 4000)
+
+
+def test_fundamentals_rejects_unknown_basis(client):
+    response = client.get("/api/companies/TEST/fundamentals?basis=other")
+
+    assert response.status_code == 422

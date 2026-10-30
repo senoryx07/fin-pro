@@ -66,3 +66,26 @@ export function trendClass(
 
   return value > 0 ? "positive" : "negative";
 }
+
+
+const croreFormatter = new Intl.NumberFormat("en-IN", {
+  maximumFractionDigits: 0,
+});
+
+
+// Amounts are stored in rupees; Indian financials read in crores.
+export function formatCrore(
+  value: number | null | undefined
+): string {
+  return value == null
+    ? "—"
+    : `${croreFormatter.format(value / 1e7)} Cr`;
+}
+
+
+export function formatRatio(
+  value: number | null | undefined,
+  suffix = "x"
+): string {
+  return value == null ? "—" : `${value.toFixed(1)}${suffix}`;
+}

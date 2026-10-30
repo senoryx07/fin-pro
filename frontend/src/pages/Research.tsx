@@ -1,120 +1,233 @@
 import { useEffect, useState } from "react";
 
-import {
-  getCompany,
-  searchCompanies,
-} from "../services/companyService";
-
-import {
-  getPrices,
-  getTechnicals,
-} from "../services/marketService";
-
+import FundamentalsPanel from "../components/FundamentalsPanel";
+import PeersPanel from "../components/PeersPanel";
 import PriceChart from "../components/PriceChart";
 import QuoteStrip from "../components/QuoteStrip";
 import TechnicalsPanel from "../components/TechnicalsPanel";
+import ValuationPanel from "../components/ValuationPanel";
 
-import type { Company } from "../types/company";
+import {
+  loadCompany,
+  searchCompanies,
+} from "../services/dataService";
+
 import type {
-  PricePoint,
-  TechnicalSnapshot,
-} from "../types/market";
+  CompanyData,
+  CompanySummary,
+} from "../types/data";
+
+import {
+  formatCrore,
+  formatPercent,
+  formatPrice,
+  trendClass,
+} from "../utils/format";
+import { navigate } from "../utils/router";
 
 
 const researchTabs = [
   "Overview",
-  "Business",
-  "Management",
-  "Industry",
   "Fundamentals",
   "Valuation",
   "Technicals",
   "Peers",
+  "Business",
+  "Management",
   "News",
   "Filings",
 ];
 
 const liveTabs = new Set([
   "Overview",
+  "Fundamentals",
+  "Valuation",
   "Technicals",
+  "Peers",
 ]);
 
 
-function Research() {
+interface ResearchProps {
+  ticker?: string;
+  tab?: string;
+}
+
+
+function CompanySearch() {
   const [query, setQuery] = useState("");
 
   const [results, setResults] = useState<
-    Company[]
+    CompanySummary[]
   >([]);
 
-  const [selectedCompany, setSelectedCompany] =
-    useState<Company | null>(null);
+  const [error, setError] = useState("");
 
-  const [loading, setLoading] =
-    useState(false);
 
-  const [error, setError] =
-    useState("");
+  useEffect(() => {
+    let cancelled = false;
 
-  const [activeTab, setActiveTab] =
-    useState("Overview");
+    // Search runs in the browser against the static index, so a short
+    // debounce is enough.
+    const timeout = setTimeout(() => {
+      searchCompanies(query)
+        .then((companies) => {
+          if (!cancelled) {
+            setResults(companies);
+            setError("");
+          }
+        })
+        .catch(() => {
+          if (!cancelled) {
+            setError("Unable to load the company list.");
+          }
+        });
+    }, 120);
 
-  const [market, setMarket] = useState<{
+    return () => {
+      cancelled = true;
+      clearTimeout(timeout);
+    };
+  }, [query]);
+
+
+  return (
+    <>
+      <div className="page-heading">
+        <div>
+          <div className="eyebrow">RESEARCH</div>
+          <h1>Company Research</h1>
+          <p>
+            Search for a company to begin a structured
+            financial analysis.
+          </p>
+        </div>
+      </div>
+
+
+      <div className="research-search-panel search-panel-active">
+
+        <div className="large-search-icon">⌕</div>
+
+        <div className="search-panel-content">
+
+          <div className="search-panel-label">
+            COMPANY SEARCH
+          </div>
+
+          <input
+            autoFocus
+            type="text"
+            value={query}
+            onChange={(event) =>
+              setQuery(event.target.value)
+            }
+            onKeyDown={(event) => {
+              if (event.key === "Enter" && results[0]) {
+                navigate("research", results[0].ticker);
+              }
+            }}
+            placeholder="Enter company name or ticker..."
+          />
+
+          <div className="search-panel-hint">
+            Try Reliance, TCS, Infosys, HDFC Bank or
+            Asian Paints
+          </div>
+
+        </div>
+
+      </div>
+
+
+      {error && (
+        <div className="research-error">{error}</div>
+      )}
+
+
+      {results.length > 0 && (
+        <div className="company-results">
+
+          <div className="results-header">
+            <span>SEARCH RESULTS</span>
+            <span>{results.length} SHOWN</span>
+          </div>
+
+          {results.map((company) => (
+            <a
+              key={company.ticker}
+              className="company-result"
+              href={`#/research/${encodeURIComponent(company.ticker)}`}
+            >
+              <div className="company-result-main">
+                <div className="company-result-name">
+                  {company.name}
+                </div>
+                <div className="company-result-description">
+                  {company.sector} · {company.industry}
+                </div>
+              </div>
+
+              <div className="company-result-meta">
+                <strong>{company.ticker}</strong>
+                <span>₹{formatPrice(company.last_close)}</span>
+                <span className={trendClass(company.change_percent)}>
+                  {formatPercent(company.change_percent)}
+                </span>
+                {company.market_cap != null && (
+                  <span>{formatCrore(company.market_cap)}</span>
+                )}
+              </div>
+            </a>
+          ))}
+
+        </div>
+      )}
+
+
+      {!query && (
+        <div className="empty-research">
+          <div className="empty-icon">◎</div>
+          <h2>No company selected</h2>
+          <p>
+            Search for a company to open its complete
+            research workspace.
+          </p>
+        </div>
+      )}
+    </>
+  );
+}
+
+
+function CompanyWorkspace({
+  ticker,
+  tab,
+}: {
+  ticker: string;
+  tab: string;
+}) {
+  const [state, setState] = useState<{
     ticker: string;
-    prices: PricePoint[];
-    technicals: TechnicalSnapshot | null;
+    data: CompanyData | null;
     error: string;
   } | null>(null);
 
 
-  const selectedTicker =
-    selectedCompany?.security.ticker ?? null;
-
-  // Only use market data that belongs to the selected company.
-  const currentMarket =
-    market && market.ticker === selectedTicker
-      ? market
-      : null;
-
-  const prices = currentMarket?.prices ?? [];
-
-  const technicals =
-    currentMarket?.technicals ?? null;
-
-  const marketError = currentMarket?.error ?? "";
-
-  const marketLoading =
-    selectedTicker !== null && currentMarket === null;
-
-
   useEffect(() => {
-    if (!selectedTicker) {
-      return;
-    }
-
     let cancelled = false;
 
-    Promise.all([
-      getPrices(selectedTicker),
-      getTechnicals(selectedTicker),
-    ])
-      .then(([series, snapshot]) => {
+    loadCompany(ticker)
+      .then((data) => {
         if (!cancelled) {
-          setMarket({
-            ticker: selectedTicker,
-            prices: series.points,
-            technicals: snapshot,
-            error: "",
-          });
+          setState({ ticker, data, error: "" });
         }
       })
       .catch(() => {
         if (!cancelled) {
-          setMarket({
-            ticker: selectedTicker,
-            prices: [],
-            technicals: null,
-            error: "Unable to load market data.",
+          setState({
+            ticker,
+            data: null,
+            error: `No data found for ${ticker}.`,
           });
         }
       });
@@ -122,601 +235,254 @@ function Research() {
     return () => {
       cancelled = true;
     };
-  }, [selectedTicker]);
+  }, [ticker]);
 
+
+  const current = state?.ticker === ticker ? state : null;
+
+  const companyName = current?.data?.company.name;
 
   useEffect(() => {
-    const trimmedQuery = query.trim();
+    document.title = companyName
+      ? `${companyName} (${ticker}) · Fin Pro`
+      : "Fin Pro · Indian Stock Research";
+  }, [companyName, ticker]);
 
-    if (!trimmedQuery) {
-      setResults([]);
-      setError("");
-      return;
-    }
+  if (!current) {
+    return <div className="market-loading">LOADING {ticker}</div>;
+  }
 
-    const timeout = setTimeout(
-      async () => {
-        try {
-          setLoading(true);
-          setError("");
-
-          const companies =
-            await searchCompanies(
-              trimmedQuery
-            );
-
-          setResults(companies);
-        } catch {
-          setResults([]);
-
-          setError(
-            "Unable to connect to the Fin Pro backend."
-          );
-        } finally {
-          setLoading(false);
-        }
-      },
-      300
+  if (!current.data) {
+    return (
+      <>
+        <div className="research-error">{current.error}</div>
+        <a className="change-company-button" href="#/research">
+          ← Search companies
+        </a>
+      </>
     );
+  }
 
-    return () =>
-      clearTimeout(timeout);
-  }, [query]);
+  const { company, prices, technicals, fundamentals, valuation, peers } =
+    current.data;
 
+  const activeTab =
+    researchTabs.find((t) => t.toLowerCase() === tab) ?? "Overview";
 
-  const handleSelectCompany = async (
-    ticker: string
-  ) => {
-    try {
-      setLoading(true);
-      setError("");
+  const hasFinancials = fundamentals != null;
 
-      const company =
-        await getCompany(ticker);
+  const noFinancials = (
+    <div className="empty-research module-pending">
+      <div className="empty-icon">▥</div>
+      <h2>Financial results not loaded yet</h2>
+      <p>
+        Quarterly results for {company.security.ticker} have not
+        been imported. Run the financial loader for this ticker
+        and re-export the site data.
+      </p>
+    </div>
+  );
 
-      setSelectedCompany(company);
-
-      setActiveTab("Overview");
-
-      setQuery(company.name);
-
-      setResults([]);
-    } catch {
-      setError(
-        "Unable to load company information."
-      );
-    } finally {
-      setLoading(false);
-    }
-  };
-
-
-  const marketSection = (
+  const priceSection = (
     <>
-      {marketLoading && (
-        <div className="market-loading">
-          LOADING MARKET DATA
-        </div>
-      )}
-
-      {marketError && (
-        <div className="research-error">
-          {marketError}
-        </div>
-      )}
-
-      {technicals && technicals.sessions > 0 && (
+      {technicals.sessions > 0 && (
         <QuoteStrip snapshot={technicals} />
       )}
 
-      {!marketLoading && !marketError && (
-        <div className="chart-card">
-          <div className="section-label">
-            PRICE HISTORY
-          </div>
-          <PriceChart points={prices} />
-        </div>
-      )}
+      <div className="chart-card">
+        <div className="section-label">PRICE HISTORY</div>
+        <PriceChart points={prices} />
+      </div>
     </>
   );
 
 
   return (
-    <section className="research-page">
+    <>
+      <div className="company-header">
+        <div className="company-header-top">
+          <div>
+            <div className="eyebrow">COMPANY RESEARCH</div>
+            <h1>{company.name}</h1>
 
-      {!selectedCompany ? (
+            <div className="company-meta">
+              <span>
+                {company.security.exchange}:{" "}
+                {company.security.ticker ?? "—"}
+              </span>
+              <span className="meta-separator">•</span>
+              <span>{company.sector}</span>
+              <span className="meta-separator">•</span>
+              <span>{company.industry}</span>
+            </div>
+          </div>
 
+          <a className="change-company-button" href="#/research">
+            ← Change Company
+          </a>
+        </div>
+      </div>
+
+
+      <div className="company-tabs">
+        {researchTabs.map((name) => (
+          <a
+            key={name}
+            href={`#/research/${encodeURIComponent(
+              ticker
+            )}/${name.toLowerCase()}`}
+            className={`company-tab ${
+              name === activeTab ? "active" : ""
+            } ${liveTabs.has(name) ? "" : "pending"}`}
+          >
+            {name}
+          </a>
+        ))}
+      </div>
+
+
+      {activeTab === "Overview" && (
         <>
-          <div className="page-heading">
-            <div>
-
-              <div className="eyebrow">
-                RESEARCH
-              </div>
-
-              <h1>
-                Company Research
-              </h1>
-
-              <p>
-                Search for a company to begin a
-                structured financial analysis.
-              </p>
-
-            </div>
-          </div>
-
-
-          <div className="research-search-panel search-panel-active">
-
-            <div className="large-search-icon">
-              ⌕
-            </div>
-
-            <div className="search-panel-content">
-
-              <div className="search-panel-label">
-                COMPANY SEARCH
-              </div>
-
-              <input
-                autoFocus
-                type="text"
-                value={query}
-                onChange={(event) =>
-                  setQuery(
-                    event.target.value
-                  )
-                }
-                placeholder="Enter company name or ticker..."
-              />
-
-              <div className="search-panel-hint">
-                Try Reliance, TCS, Infosys,
-                HDFC Bank or Asian Paints
-              </div>
-
-            </div>
-
-            {loading && (
-              <div className="search-loading">
-                SEARCHING
-              </div>
-            )}
-
-          </div>
-
-
-          {error && (
-            <div className="research-error">
-              {error}
-            </div>
-          )}
-
-
-          {results.length > 0 && (
-
-            <div className="company-results">
-
-              <div className="results-header">
-
-                <span>
-                  SEARCH RESULTS
-                </span>
-
-                <span>
-                  {results.length} FOUND
-                </span>
-
-              </div>
-
-
-              {results.map(
-                (company) => (
-
-                  <button
-                    key={
-                      company.security.ticker ??
-                      company.name
-                    }
-                    className="company-result"
-                    onClick={() =>
-                      company.security.ticker &&
-                      handleSelectCompany(
-                        company.security.ticker
-                      )
-                    }
-                  >
-
-                    <div className="company-result-main">
-
-                      <div className="company-result-name">
-                        {company.name}
-                      </div>
-
-                      <div className="company-result-description">
-                        {company.description}
-                      </div>
-
-                    </div>
-
-
-                    <div className="company-result-meta">
-
-                      <strong>
-                        {
-                          company.security
-                            .ticker ?? "—"
-                        }
-                      </strong>
-
-                      <span>
-                        {
-                          company.security
-                            .exchange
-                        }
-                      </span>
-
-                      <span>
-                        {company.sector}
-                      </span>
-
-                    </div>
-
-                  </button>
-
-                )
-              )}
-
-            </div>
-
-          )}
-
-
-          {!query && (
-
-            <div className="empty-research">
-
-              <div className="empty-icon">
-                ◎
-              </div>
-
-              <h2>
-                No company selected
-              </h2>
-
-              <p>
-                Search for a company to open
-                its complete research workspace.
-              </p>
-
-            </div>
-
-          )}
-
-        </>
-
-      ) : (
-
-        <>
-
-          <div className="company-header">
-
-            <div className="company-header-top">
-
-              <div>
-
-                <div className="eyebrow">
-                  COMPANY RESEARCH
-                </div>
-
-                <h1>
-                  {selectedCompany.name}
-                </h1>
-
-
-                <div className="company-meta">
-
-                  <span>
-                    {
-                      selectedCompany
-                        .security
-                        .exchange
-                    }
-                    :{" "}
-                    {
-                      selectedCompany
-                        .security
-                        .ticker ?? "—"
-                    }
-                  </span>
-
-                  <span className="meta-separator">
-                    •
-                  </span>
-
-                  <span>
-                    {selectedCompany.sector}
-                  </span>
-
-                  <span className="meta-separator">
-                    •
-                  </span>
-
-                  <span>
-                    {selectedCompany.industry}
-                  </span>
-
-                </div>
-
-              </div>
-
-
-              <button
-                className="change-company-button"
-                onClick={() => {
-
-                  setSelectedCompany(
-                    null
-                  );
-
-                  setQuery("");
-
-                }}
-              >
-                ← Change Company
-              </button>
-
-            </div>
-
-          </div>
-
-
-          <div className="company-tabs">
-
-            {researchTabs.map(
-              (tab) => (
-
-                <button
-                  key={tab}
-                  className={`company-tab ${
-                    tab === activeTab
-                      ? "active"
-                      : ""
-                  } ${
-                    liveTabs.has(tab)
-                      ? ""
-                      : "pending"
-                  }`}
-                  onClick={() =>
-                    setActiveTab(tab)
-                  }
-                >
-                  {tab}
-                </button>
-
-              )
-            )}
-
-          </div>
-
-
-          {activeTab === "Technicals" && (
-            <>
-              {marketSection}
-
-              {technicals && technicals.sessions > 0 && (
-                <TechnicalsPanel
-                  snapshot={technicals}
-                />
-              )}
-            </>
-          )}
-
-
-          {!liveTabs.has(activeTab) && (
-            <div className="empty-research module-pending">
-
-              <div className="empty-icon">
-                ◌
-              </div>
-
-              <h2>
-                {activeTab} module in development
-              </h2>
-
-              <p>
-                This research module is planned
-                but not built yet. Overview and
-                Technicals are live.
-              </p>
-
-            </div>
-          )}
-
-
-          {activeTab === "Overview" && (
-          <>
-          {marketSection}
+          {priceSection}
 
           <div className="company-overview">
-
             <div className="overview-main">
-
               <div className="section-label">
                 BUSINESS OVERVIEW
               </div>
-
-              <h2>
-                Understanding the company
-              </h2>
-
-              <p>
-                {selectedCompany.description}
-              </p>
-
+              <h2>Understanding the company</h2>
+              <p>{company.description}</p>
 
               <div className="overview-grid">
-
                 <div className="overview-stat">
-
-                  <span>
-                    EXCHANGE
-                  </span>
-
+                  <span>MARKET CAP</span>
                   <strong>
-                    {
-                      selectedCompany
-                        .security
-                        .exchange
-                    }
+                    {formatCrore(valuation?.market_cap)}
                   </strong>
-
                 </div>
-
-
                 <div className="overview-stat">
-
-                  <span>
-                    TICKER
-                  </span>
-
+                  <span>P/E (TTM)</span>
                   <strong>
-                    {
-                      selectedCompany
-                        .security
-                        .ticker ?? "—"
-                    }
+                    {valuation?.pe_ratio != null
+                      ? `${valuation.pe_ratio.toFixed(1)}x`
+                      : "—"}
                   </strong>
-
                 </div>
-
-
                 <div className="overview-stat">
-
-                  <span>
-                    SECTOR
-                  </span>
-
+                  <span>TTM REVENUE</span>
                   <strong>
-                    {selectedCompany.sector}
+                    {formatCrore(fundamentals?.ttm_revenue)}
                   </strong>
-
                 </div>
-
-
                 <div className="overview-stat">
-
-                  <span>
-                    INDUSTRY
-                  </span>
-
+                  <span>TTM NET PROFIT</span>
                   <strong>
-                    {selectedCompany.industry}
+                    {formatCrore(fundamentals?.ttm_net_profit)}
                   </strong>
-
                 </div>
-
               </div>
-
             </div>
-
 
             <div className="overview-side">
-
-              <div className="section-label">
-                RESEARCH STATUS
-              </div>
-
-
-              <div className="research-status">
-
-                <span className="status-dot"></span>
-
-                <div>
-
-                  <strong>
-                    Company loaded
-                  </strong>
-
-                  <p>
-                    Research workspace
-                    initialized.
-                  </p>
-
-                </div>
-
-              </div>
-
+              <div className="section-label">LISTING</div>
 
               <div className="research-status-line">
-
-                <span>
-                  Data source
-                </span>
-
-                <strong>
-                  Fin Pro API
-                </strong>
-
+                <span>Ticker</span>
+                <strong>{company.security.ticker}</strong>
               </div>
-
-
               <div className="research-status-line">
-
-                <span>
-                  Exchange
-                </span>
-
-                <strong>
-                  {
-                    selectedCompany
-                      .security
-                      .exchange
-                  }
-                </strong>
-
+                <span>ISIN</span>
+                <strong>{company.security.isin ?? "—"}</strong>
               </div>
-
-
               <div className="research-status-line">
-
-                <span>
-                  Research modules
-                </span>
-
-                <strong>
-                  {liveTabs.size} of{" "}
-                  {researchTabs.length} live
-                </strong>
-
+                <span>Series</span>
+                <strong>{company.security.series ?? "—"}</strong>
               </div>
-
-
               <div className="research-status-line">
-
-                <span>
-                  Price history
-                </span>
-
-                <strong>
-                  {technicals
-                    ? `${technicals.sessions} sessions`
-                    : "—"}
-                </strong>
-
+                <span>Price history</span>
+                <strong>{technicals.sessions} sessions</strong>
               </div>
-
+              <div className="research-status-line">
+                <span>Financials</span>
+                <strong>
+                  {hasFinancials
+                    ? `${fundamentals.quarters.length} quarters`
+                    : "Not loaded"}
+                </strong>
+              </div>
             </div>
-
           </div>
-          </>
-          )}
-
         </>
-
       )}
 
+
+      {activeTab === "Fundamentals" &&
+        (hasFinancials ? (
+          <FundamentalsPanel fundamentals={fundamentals} />
+        ) : (
+          noFinancials
+        ))}
+
+
+      {activeTab === "Valuation" &&
+        (valuation ? (
+          <ValuationPanel valuation={valuation} />
+        ) : (
+          noFinancials
+        ))}
+
+
+      {activeTab === "Technicals" && (
+        <>
+          {priceSection}
+          {technicals.sessions > 0 && (
+            <TechnicalsPanel snapshot={technicals} />
+          )}
+        </>
+      )}
+
+
+      {activeTab === "Peers" &&
+        (peers ? (
+          <PeersPanel peers={peers} ticker={ticker} />
+        ) : (
+          <div className="empty-research module-pending">
+            <div className="empty-icon">⇄</div>
+            <h2>No peer group yet</h2>
+            <p>
+              {company.name} is not in NSE's classified index
+              lists, so there is no peer group for it yet.
+            </p>
+          </div>
+        ))}
+
+
+      {!liveTabs.has(activeTab) && (
+        <div className="empty-research module-pending">
+          <div className="empty-icon">◌</div>
+          <h2>{activeTab} module in development</h2>
+          <p>
+            This research module is planned but not built
+            yet.
+          </p>
+        </div>
+      )}
+    </>
+  );
+}
+
+
+function Research({ ticker, tab }: ResearchProps) {
+  return (
+    <section className="research-page">
+      {ticker ? (
+        <CompanyWorkspace
+          ticker={ticker.toUpperCase()}
+          tab={(tab ?? "overview").toLowerCase()}
+        />
+      ) : (
+        <CompanySearch />
+      )}
     </section>
   );
 }

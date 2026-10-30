@@ -2,42 +2,66 @@
 
 ## Financial Research & Analytics Platform
 
-Fin Pro is a research workspace for Indian listed equities. Search a company
-and get its profile, price history and technical analysis in one place, with
-fundamentals, valuation and peer modules to follow.
+Fin Pro is a research website for Indian listed equities. Search any
+NSE-listed company and get its price history, quarterly results, valuation
+and technical analysis in one place.
 
-## Stack
+## How it works
 
-- **Backend:** Python, FastAPI, SQLModel, SQLite (`finpro.db`)
-- **Frontend:** React 19, TypeScript, Vite
-- **Data:** NSE / BSE security masters and NSE daily bhavcopy prices
+Fin Pro is a **static website**, so it can be hosted free on GitHub Pages,
+Cloudflare Pages, Netlify or Vercel with no server.
+
+```
+NSE (bhavcopy + XBRL results)
+   │  Python pipeline (backend/)
+   ▼
+finpro.db (SQLite, local only)
+   │  python -m backend.app.update
+   ▼
+frontend/public/data/*.json   ← one file per company + search index
+   │  npm run build
+   ▼
+frontend/dist                 ← the website, deployable anywhere
+```
+
+- **Pipeline:** Python, SQLModel, SQLite, pandas
+- **Website:** React 19, TypeScript, Vite (hash routes such as
+  `#/research/TCS/valuation`, so no server rewrites are needed)
+- **Data:** NSE security master, NSE daily bhavcopy prices, and NSE
+  quarterly results filings (XBRL), adjusted for splits and bonuses
 
 ## Getting Started
 
 ```bash
-# Backend (from the project root)
 python -m venv .venv
 .venv\Scripts\activate          # Windows
 pip install -r requirements.txt
-uvicorn backend.app.main:app --reload     # http://127.0.0.1:8000/docs
 
-# Frontend
 cd frontend
 npm install
-npm run dev                               # http://localhost:5173
 ```
 
-### Loading data
+### First-time data load
 
 ```bash
-python -m backend.app.ingestion.nse_security_loader   # NSE security master
-python -m backend.app.ingestion.bse_security_loader   # BSE security master
-python -m backend.app.ingestion.market_loader         # NSE daily price backfill
+python -m backend.app.ingestion.nse_security_loader          # company list
+python -m backend.app.ingestion.market_loader --start 2025-10-01
+python -m backend.app.ingestion.financial_loader --top 100   # results, ~1 min/company
 ```
 
-Edit the date range at the bottom of `market_loader.py` to backfill more
-history. MACD needs 34 sessions, SMA 50 needs 50 and SMA 200 needs 200; the
-Technicals tab shows which indicators are waiting on data.
+### Daily update
+
+```bash
+python -m backend.app.update            # new prices + results, then export JSON
+python -m backend.app.update --top 200  # also add results for more companies
+```
+
+### Run the website locally
+
+```bash
+cd frontend
+npm run dev                             # http://localhost:5173
+```
 
 ### Tests
 
@@ -45,31 +69,46 @@ Technicals tab shows which indicators are waiting on data.
 pytest
 ```
 
-## API
+## Deploying
 
-| Endpoint | Description |
-| --- | --- |
-| `GET /api/companies/search?q=` | Search by name, ticker, sector or industry |
-| `GET /api/companies/{ticker}` | Company profile and NSE listing |
-| `GET /api/companies/{ticker}/prices?limit=` | Daily OHLCV with SMA 20 and Bollinger bands |
-| `GET /api/companies/{ticker}/technicals` | RSI, MACD, moving averages, returns, volatility |
-| `GET /api/securities` / `{ticker}` | Raw security master |
+The generated data (~45 MB) is **not committed**; it changes daily and would
+bloat the repository. Deploy the built site instead.
+
+**GitHub Pages**
+
+1. Push this repository to GitHub.
+2. Run `python scripts/deploy.py`. It builds the site and force-pushes it to
+   a `gh-pages` branch as a single commit (no history builds up).
+3. In the repository settings, under **Pages**, set the source to the
+   `gh-pages` branch.
+
+**Cloudflare Pages** (free, no bandwidth cap)
+
+```bash
+cd frontend
+npm run build
+npx wrangler pages deploy dist --project-name fin-pro
+```
+
+Re-run the update and the deploy step whenever you want fresh data.
+
+## Local API (optional)
+
+The FastAPI app exposes the same data for development:
+`uvicorn backend.app.main:app --reload`, then open
+http://127.0.0.1:8000/docs.
 
 ## Research Modules
 
 | Module | Status |
 | --- | --- |
 | Company Overview | ✅ Live |
+| Fundamentals (quarterly & annual results) | ✅ Live |
+| Valuation (market cap, P/E, P/S, P/E history) | ✅ Live |
 | Technical Analysis | ✅ Live |
-| Business & Operating Segments | Planned |
-| Management & Founders | Planned |
-| Industry Analysis | Planned |
-| Fundamental Analysis | Planned (needs a financial-statements source) |
-| Valuation Analysis | Planned |
+| Markets (all companies, sortable) | ✅ Live |
 | Peer Comparison | Planned |
-| News & Events | Planned |
-| Filings & Reports | Planned |
+| News & Filings | Planned |
+| Business, Management, Industry | Planned |
 
-## Project Status
-
-🚧 Under Development
+Not investment advice.

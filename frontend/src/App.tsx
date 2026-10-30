@@ -1,17 +1,21 @@
-import { useState } from "react";
 import Sidebar from "./components/Sidebar";
 import TopBar from "./components/TopBar";
 import Home from "./pages/Home";
+import Markets from "./pages/Markets";
 import Research from "./pages/Research";
+import { useRoute } from "./utils/router";
 import "./styles/app.css";
+import "./styles/site.css";
 
 function App() {
-  const [activePage, setActivePage] = useState("home");
+  const [page = "home", ticker, tab] = useRoute();
 
   const renderPage = () => {
-    switch (activePage) {
+    switch (page) {
       case "research":
-        return <Research />;
+        return <Research ticker={ticker} tab={tab} />;
+      case "markets":
+        return <Markets />;
       case "home":
       default:
         return <Home />;
@@ -20,7 +24,7 @@ function App() {
 
   return (
     <div className="app-shell">
-      <Sidebar activePage={activePage} setActivePage={setActivePage} />
+      <Sidebar activePage={page} />
 
       <div className="main-area">
         <TopBar />

@@ -28,3 +28,7 @@ app/data/processed/
 Thumbs.db
 # Test cache
 .pytest_cache/
+*.db-journal
+
+# Generated site data (published by scripts/deploy.py, not committed)
+frontend/public/data/

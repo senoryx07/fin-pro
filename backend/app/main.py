@@ -4,11 +4,13 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from backend.app.api.company import router as company_router
+from backend.app.api.financials import router as financials_router
 from backend.app.api.market import router as market_router
 from backend.app.api.security import router as security_router
 from backend.app.database.database import create_db_and_tables
 from backend.app.database.seed import seed_companies
 from backend.app.models.market_data import DailyPrice
+from backend.app.models.financials import FinancialResult
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -40,6 +42,7 @@ app.add_middleware(
 
 app.include_router(company_router)
 app.include_router(market_router)
+app.include_router(financials_router)
 app.include_router(security_router)
 
 

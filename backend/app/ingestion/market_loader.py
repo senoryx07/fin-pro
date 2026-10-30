@@ -1,3 +1,4 @@
+import argparse
 from datetime import date, timedelta
 from typing import Any
 
@@ -291,16 +292,32 @@ def backfill_nse_history(
     print()
 
 
+def parse_args():
+    parser = argparse.ArgumentParser(
+        description="Backfill NSE daily prices.",
+    )
+
+    parser.add_argument(
+        "--start",
+        type=date.fromisoformat,
+        required=True,
+        help="First trade date (YYYY-MM-DD)",
+    )
+
+    parser.add_argument(
+        "--end",
+        type=date.fromisoformat,
+        default=date.today(),
+        help="Last trade date (YYYY-MM-DD), default today",
+    )
+
+    return parser.parse_args()
+
+
 if __name__ == "__main__":
+    args = parse_args()
+
     backfill_nse_history(
-        start_date=date(
-            2026,
-            8,
-            25,
-        ),
-        end_date=date(
-            2026,
-            9,
-            25,
-        ),
+        start_date=args.start,
+        end_date=args.end,
     )
