@@ -12,13 +12,11 @@ on:
     # day's bhavcopy. GitHub may start scheduled runs a little late.
     - cron: "0 14 * * 1-5"
   workflow_dispatch:
-  push:
-    branches: [master]
-    paths:
-      - ".github/workflows/daily-update.yml"
 
 permissions:
   contents: write
+  # Needed to re-enable this workflow (see "Keep schedule alive").
+  actions: write
 
 concurrency:
   group: daily-update
@@ -35,6 +33,13 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+
+      # GitHub disables scheduled workflows after 60 days without repository
+      # activity. Re-enabling the workflow through the API resets that
+      # clock without needing a commit.
+      - name: Keep schedule alive
+        continue-on-error: true
+        run: gh api --method PUT "repos/${{ github.repository }}/actions/workflows/daily-update.yml/enable"
 
       - uses: actions/setup-python@v5
         with:

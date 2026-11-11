@@ -90,6 +90,35 @@ Run it on demand from the repository's **Actions** tab ("Daily data update"
 → **Run workflow**). The generated site data (~50 MB) is never committed to
 `master`, and `gh-pages` keeps no history, so the repository stays small.
 
+**Things to know about the daily update**
+
+- **Weekdays only.** It runs Monday to Friday. On NSE holidays there is no
+  new data, so the site keeps the previous close and catches up on the next
+  trading day.
+- **Timing.** Scheduled for 19:30 IST, but GitHub can start scheduled jobs
+  10–30 minutes late, and a full run takes up to an hour. Expect fresh data
+  between roughly 20:00 and 21:00 IST.
+- **Not live.** All figures are end-of-day. The banner at the top of every
+  page shows the NSE closing date the data is from.
+- **Failed runs.** If NSE is down or blocks the runner, the run stops with
+  a clear message (the "Check NSE is reachable" step), the site keeps its
+  last good data, and the next run catches up. GitHub emails the repository
+  owner about failed runs.
+- **60-day pause.** GitHub disables scheduled workflows in repositories with
+  no activity for 60 days. Each run re-enables the workflow through the API
+  ("Keep schedule alive" step), which resets that clock. If it is ever
+  paused anyway, re-enable it from the **Actions** tab.
+- **Coverage.** Prices and technicals cover every NSE equity. Quarterly
+  results cover about the 100 most-traded companies, shareholding and
+  announcements about 800, and peer groups about 750 (from NSE's index
+  lists). Companies outside that show a short "not available yet" message.
+  Raise coverage with `--top` / `--corporate-top` in the workflow's update
+  step.
+- **Database copy.** The authoritative database lives on the `db-latest`
+  release. Before working locally, download it there (or with
+  `gh release download db-latest`) and unpack it with
+  `python scripts/db_archive.py unpack finpro.db.gz finpro.db`.
+
 **Manual deploy** (from your own machine)
 
 ```bash
