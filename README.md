@@ -73,26 +73,32 @@ pytest
 
 ## Deploying
 
-The generated data (~45 MB) is **not committed**; it changes daily and would
-bloat the repository. Deploy the built site instead.
+The site is hosted on **GitHub Pages** from the `gh-pages` branch and
+updates itself.
 
-**GitHub Pages**
+**Automatic daily update (GitHub Actions)**
 
-1. Push this repository to GitHub.
-2. Run `python scripts/deploy.py`. It builds the site and force-pushes it to
-   a `gh-pages` branch as a single commit (no history builds up).
-3. In the repository settings, under **Pages**, set the source to the
-   `gh-pages` branch.
+`.github/workflows/daily-update.yml` runs every weekday at 19:30 IST:
 
-**Cloudflare Pages** (free, no bandwidth cap)
+1. restores the database from the `db-latest` release (or `seed/` on the
+   very first run),
+2. runs `python -m backend.app.update` against NSE,
+3. saves the database back to the `db-latest` release,
+4. builds the site and publishes it to `gh-pages` as a single commit.
+
+Run it on demand from the repository's **Actions** tab ("Daily data update"
+→ **Run workflow**). The generated site data (~50 MB) is never committed to
+`master`, and `gh-pages` keeps no history, so the repository stays small.
+
+**Manual deploy** (from your own machine)
 
 ```bash
-cd frontend
-npm run build
-npx wrangler pages deploy dist --project-name fin-pro
+python -m backend.app.update
+python scripts/deploy.py      # force-pushes the build to gh-pages
 ```
 
-Re-run the update and the deploy step whenever you want fresh data.
+`scripts/install_schedule.ps1` sets up the same nightly job with Windows
+Task Scheduler, if you'd rather run it locally.
 
 ## Local API (optional)
 

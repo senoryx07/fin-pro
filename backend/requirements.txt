@@ -1,9 +1,11 @@
-fastapi
-uvicorn[standard]
-sqlmodel
-pandas
-requests
+fastapi==0.141.1
+uvicorn[standard]==0.54.0
+sqlmodel==0.0.47
+SQLAlchemy==2.0.54
+pandas==3.0.6
+numpy==2.5.3
+requests==2.34.2
 
 # Development
-pytest
-httpx
+pytest==9.1.1
+httpx==0.28.1
