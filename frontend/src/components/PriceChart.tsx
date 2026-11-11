@@ -346,6 +346,10 @@ function PriceChart({ points }: PriceChartProps) {
           />
 
           <path
+            // Re-keyed per range so the draw-in animation replays.
+            key={`close-${range}`}
+            className="chart-line-draw"
+            pathLength={1}
             d={geometry.closePath}
             fill="none"
             stroke={tone}

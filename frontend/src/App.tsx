@@ -30,7 +30,12 @@ function App() {
       <div className="main-area">
         <TopBar />
         <DataNotice />
-        <main className="page-content">{renderPage()}</main>
+        <main className="page-content">
+          {/* Keyed by route so each page and tab animates in. */}
+          <div className="page-enter" key={`${page}/${ticker ?? ""}/${tab ?? ""}`}>
+            {renderPage()}
+          </div>
+        </main>
       </div>
     </div>
   );
