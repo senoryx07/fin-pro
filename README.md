@@ -100,6 +100,10 @@ Run it on demand from the repository's **Actions** tab ("Daily data update"
   between roughly 20:00 and 21:00 IST.
 - **Not live.** All figures are end-of-day. The banner at the top of every
   page shows the NSE closing date the data is from.
+- **Time budget.** Prices are always updated first. Quarterly results and
+  announcements then get 75 minutes; announcements refresh about 250 of the
+  stalest companies per run, so every company is refreshed every few days.
+  Whatever is done by then is saved and published.
 - **Failed runs.** If NSE is down or blocks the runner, the run stops with
   a clear message (the "Check NSE is reachable" step), the site keeps its
   last good data, and the next run catches up. GitHub emails the repository

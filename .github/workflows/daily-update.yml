@@ -12,6 +12,11 @@ on:
     # day's bhavcopy. GitHub may start scheduled runs a little late.
     - cron: "0 14 * * 1-5"
   workflow_dispatch:
+  # Also run when this workflow changes, to test fixes straight away.
+  push:
+    branches: [master]
+    paths:
+      - ".github/workflows/daily-update.yml"
 
 permissions:
   contents: write
@@ -24,8 +29,9 @@ concurrency:
 
 jobs:
   update:
-    runs-on: ubuntu-latest
-    timeout-minutes: 300
+    # Pinned: ubuntu-latest is moving to Ubuntu 26.
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
 
     env:
       GH_TOKEN: ${{ github.token }}
@@ -66,10 +72,17 @@ jobs:
             python scripts/db_archive.py unpack seed/finpro.db.gz finpro.db
           fi
 
+      # Prices first, then results/announcements within a 75-minute
+      # budget, then export. The step limit is a backstop.
       - name: Update data from NSE
-        run: python -m backend.app.update
+        timeout-minutes: 120
+        run: python -m backend.app.update --budget-minutes 75
 
+      # The steps below still run after a partial update failure, so any
+      # progress is kept and published.
       - name: Save database
+        if: ${{ !cancelled() && hashFiles('finpro.db') != '' }}
+        timeout-minutes: 15
         run: |
           python scripts/db_archive.py pack finpro.db /tmp/finpro.db.gz
 
@@ -83,12 +96,15 @@ jobs:
           gh release upload "$DB_RELEASE" /tmp/finpro.db.gz --clobber
 
       - uses: actions/setup-node@v4
+        if: ${{ !cancelled() && hashFiles('frontend/public/data/index.json') != '' }}
         with:
           node-version: "24"
           cache: npm
           cache-dependency-path: frontend/package-lock.json
 
       - name: Build site
+        if: ${{ !cancelled() && hashFiles('frontend/public/data/index.json') != '' }}
+        timeout-minutes: 15
         working-directory: frontend
         run: |
           npm ci
@@ -96,6 +112,8 @@ jobs:
           touch dist/.nojekyll
 
       - name: Publish to GitHub Pages
+        if: ${{ !cancelled() && hashFiles('frontend/dist/index.html') != '' }}
+        timeout-minutes: 15
         uses: peaceiris/actions-gh-pages@v4
         with:
           github_token: ${{ github.token }}

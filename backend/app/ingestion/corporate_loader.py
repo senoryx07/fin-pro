@@ -172,58 +172,102 @@ def load_corporate_info(
     )
 
 
+# Stop a run after this many companies fail in a row; NSE is likely
+# throttling or down, and retrying every company would take hours.
+MAX_CONSECUTIVE_FAILURES = 5
+
+
 def refresh_corporate_info(
     tickers: list[str],
     force: bool = False,
+    limit: int | None = None,
+    deadline: datetime | None = None,
 ) -> None:
-    """Fetch corporate info for each ticker not refreshed recently."""
+    """
+    Fetch corporate info for tickers not refreshed recently, stalest first.
+
+    `limit` caps how many companies are fetched in one run and `deadline`
+    (UTC) stops the run early, so a slow night can't hold up publishing.
+    """
     provider = NSEFinancialResultsProvider()
     now = datetime.now(timezone.utc)
 
-    for index, ticker in enumerate(tickers, start=1):
-        with Session(engine) as session:
-            security = session.exec(
+    with Session(engine) as session:
+        securities = {
+            security.ticker: security
+            for security in session.exec(
                 select(Security).where(
-                    Security.ticker == ticker,
+                    Security.ticker.in_(tickers),
                     Security.exchange == "NSE",
                 )
-            ).first()
+            ).all()
+        }
 
-            if security is None:
-                continue
+        fetched = {
+            info.security_id: info.fetched_at.replace(tzinfo=timezone.utc)
+            for info in session.exec(select(CorporateInfo)).all()
+        }
 
-            existing = session.get(CorporateInfo, security.id)
+    due = []
 
-            if (
-                existing is not None
-                and not force
-                and now - existing.fetched_at.replace(tzinfo=timezone.utc)
-                < REFRESH_AFTER
-            ):
-                continue
+    for ticker in tickers:
+        security = securities.get(ticker)
 
-            try:
-                data = load_corporate_info(provider, security)
-            except Exception as exc:
-                print(f"[{index}/{len(tickers)}] {ticker}: ERROR {exc}", flush=True)
-                continue
+        if security is None:
+            continue
 
-            info = existing or CorporateInfo(
+        last = fetched.get(security.id)
+
+        if force or last is None or now - last >= REFRESH_AFTER:
+            due.append((last or datetime.min.replace(tzinfo=timezone.utc), ticker))
+
+    # Never-fetched companies first, then the oldest.
+    due.sort()
+    queue = [ticker for _, ticker in due]
+
+    if limit is not None:
+        queue = queue[:limit]
+
+    failures = 0
+
+    for index, ticker in enumerate(queue, start=1):
+        if deadline is not None and datetime.now(timezone.utc) >= deadline:
+            print(f"Corporate refresh: time budget reached after {index - 1} companies.")
+            break
+
+        security = securities[ticker]
+
+        try:
+            data = load_corporate_info(provider, security)
+        except Exception as exc:
+            failures += 1
+            print(f"[{index}/{len(queue)}] {ticker}: ERROR {exc}", flush=True)
+
+            if failures >= MAX_CONSECUTIVE_FAILURES:
+                print("Corporate refresh: too many failures in a row, stopping.")
+                break
+
+            continue
+
+        failures = 0
+
+        with Session(engine) as session:
+            info = session.get(CorporateInfo, security.id) or CorporateInfo(
                 security_id=security.id,
                 fetched_at=now,
             )
-            info.fetched_at = now
+            info.fetched_at = datetime.now(timezone.utc)
             info.data = data
 
             session.add(info)
             session.commit()
 
-            print(
-                f"[{index}/{len(tickers)}] {ticker}: "
-                f"{len(data['announcements'])} announcements, "
-                f"{len(data['shareholding'])} shareholding periods",
-                flush=True,
-            )
+        print(
+            f"[{index}/{len(queue)}] {ticker}: "
+            f"{len(data['announcements'])} announcements, "
+            f"{len(data['shareholding'])} shareholding periods",
+            flush=True,
+        )
 
 
 def main() -> None:

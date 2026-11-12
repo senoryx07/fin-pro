@@ -289,7 +289,7 @@ class NSEFinancialResultsProvider:
         self,
         url: str,
         timeout: int = 30,
-        attempts: int = 4,
+        attempts: int = 3,
     ) -> requests.Response:
         """
         GET with retries. NSE throttles sustained scraping by stalling
@@ -324,7 +324,7 @@ class NSEFinancialResultsProvider:
                 if status == 404 or attempt == attempts - 1:
                     raise
 
-                wait = 10 * 2**attempt
+                wait = 5 * 3**attempt
                 print(f"  NSE request failed ({exc}); retrying in {wait}s")
                 time.sleep(wait)
                 self._initialized = False

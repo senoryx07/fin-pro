@@ -6,7 +6,7 @@ Daily refresh: new NSE prices, new quarterly results, static export.
 """
 
 import argparse
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta, timezone
 
 from sqlalchemy import func
 from sqlmodel import Session, select
@@ -60,6 +60,18 @@ def main() -> None:
         default=800,
         help="Refresh announcements/shareholding for the N most-traded",
     )
+    parser.add_argument(
+        "--corporate-limit",
+        type=int,
+        default=250,
+        help="At most this many announcement refreshes per run (stalest first)",
+    )
+    parser.add_argument(
+        "--budget-minutes",
+        type=int,
+        default=75,
+        help="Time allowed for results + announcements before exporting",
+    )
     args = parser.parse_args()
 
     create_db_and_tables()
@@ -75,6 +87,10 @@ def main() -> None:
         if start <= date.today():
             backfill_nse_history(start_date=start, end_date=date.today())
 
+    # Prices are essential; results and announcements get a fixed time
+    # budget so a slow night still ends with a published site.
+    deadline = datetime.now(timezone.utc) + timedelta(minutes=args.budget_minutes)
+
     if not args.skip_financials:
         with Session(engine) as session:
             tickers = tickers_with_financials(session)
@@ -84,14 +100,25 @@ def main() -> None:
                     tickers.append(ticker)
 
         provider = NSEFinancialResultsProvider()
+        failures = 0
 
         for index, ticker in enumerate(tickers, start=1):
+            if datetime.now(timezone.utc) >= deadline:
+                print(f"Results: time budget reached after {index - 1} companies.")
+                break
+
             try:
                 summary = load_company_financials(provider, ticker)
+                failures = 0
             except Exception as exc:
                 summary = f"ERROR {exc}"
+                failures += 1
 
             print(f"[{index}/{len(tickers)}] {ticker}: {summary}", flush=True)
+
+            if failures >= 5:
+                print("Results: too many failures in a row, stopping.")
+                break
 
     if not args.skip_corporate:
         with Session(engine) as session:
@@ -99,7 +126,11 @@ def main() -> None:
                 session, args.corporate_top
             )
 
-        refresh_corporate_info(corporate_tickers)
+        refresh_corporate_info(
+            corporate_tickers,
+            limit=args.corporate_limit,
+            deadline=deadline,
+        )
 
     try:
         load_classification()
